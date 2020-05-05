@@ -100,13 +100,27 @@ fn wide_open_permissions() -> std::fs::Permissions {
     PermissionsExt::from_mode(0o777)
 }
 
+
+fn gen_random_str() -> String {
+    use rand::prelude::*;
+    let mut rng = rand::thread_rng();
+    let mut v: Vec<u8> = ('a' as u8..'z' as u8).collect();
+    v.shuffle(&mut rng);
+    return String::from_utf8(v).unwrap();
+    // return String::from("hoge2");
+}
+
 impl Sandbox {
     pub fn new() -> Result<Self> {
         let scratch = TempDir::new("playground").context(UnableToCreateTempDir)?;
-        let input_file = scratch.path().join("input.rs");
-        let output_dir = scratch.path().join("output");
+        let tmp_dir = PathBuf::from("/tmp").join("rplayground").join(gen_random_str());
+        let input_file = tmp_dir.join("input.rs");
+        let output_dir = tmp_dir.join("output");
+        // let input_file = scratch.path().join("input.rs");
+        // let output_dir = scratch.path().join("output");
 
-        fs::create_dir(&output_dir).context(UnableToCreateOutputDir)?;
+        fs::create_dir_all(&tmp_dir).context(UnableToCreateOutputDir)?;
+        fs::create_dir_all(&output_dir).context(UnableToCreateOutputDir)?;
         fs::set_permissions(&output_dir, wide_open_permissions()).context(UnableToSetOutputPermissions)?;
 
         Ok(Sandbox {
@@ -172,8 +186,23 @@ impl Sandbox {
     pub fn execute(&self, req: &ExecuteRequest) -> Result<ExecuteResponse> {
         self.write_source_code(&req.code)?;
         let command = self.execute_command(req.channel, req.mode, req.tests, req);
+        // for _ in 0..10 {
+        //     println!("waiting... | {:?}", self.input_file);
+        //     std::thread::sleep(std::time::Duration::from_secs(1));
+        // }
 
         let output = run_command_with_timeout(command)?;
+
+
+        println!("stdout!!!!!!!!!!: {:?}", vec_to_str(output.stdout.clone()));
+        println!("stderr!!!!!!!!!!: {:?}", vec_to_str(output.stderr.clone()));
+
+        // // Sleep for 10 sec
+        // for _ in 0..10 {
+        //     let input_file_content = fs::read_to_string(&self.input_file).unwrap();
+        //     println!("input_file_content: {:?}", input_file_content);
+        //     std::thread::sleep(std::time::Duration::from_secs(1));
+        // }
 
         Ok(ExecuteResponse {
             success: output.status.success(),
@@ -297,7 +326,16 @@ impl Sandbox {
         fs::write(&self.input_file, code).context(UnableToCreateSourceFile)?;
         fs::set_permissions(&self.input_file, wide_open_permissions()).context(UnableToSetSourcePermissions)?;
 
+        // // Sleep for 10 sec
+        // for _ in 0..10 {
+        //     let input_file_content = fs::read_to_string(&self.input_file).unwrap();
+        //     println!("{:?} | input_file_content: {:?}", self.input_file, input_file_content);
+        //     std::thread::sleep(std::time::Duration::from_secs(1));
+        // }
+
         log::debug!("Wrote {} bytes of source to {}", code.len(), self.input_file.display());
+        let input_file_content = fs::read_to_string(&self.input_file).unwrap();
+        println!("input_file_content: {:?}", input_file_content);
         Ok(())
     }
 
@@ -392,7 +430,6 @@ fn basic_secure_docker_command() -> Command {
 
     cmd
         .arg("run")
-        .arg("--rm")
         .arg("--cap-drop=ALL")
         // Needed to allow overwriting the file
         .arg("--cap-add=DAC_OVERRIDE")
